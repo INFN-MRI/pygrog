@@ -4,15 +4,15 @@ requires = ["setuptools", "setuptools_scm[toml]", "wheel"]
 
 
 [project]
-name = "pulserver"
-description = "A PyPulseq-based client/server MR sequence design toolbox."
+name = "pygrog"
+description = "A package for MR reconstruction via implicit representation of GRAPPA kernels."
 readme = "README.rst"
 
 requires-python = ">=3.10"
 dynamic = ["version"]
 
 license = {file = "LICENSE"}
-keywords = ["pulseq", "mri", "sequence-design", "pulse-sequences", "mri-sequences"]
+keywords = ["mri", "inversion", "compressed-sensing", "mri-recon"]
 
 
 authors = [
@@ -42,12 +42,12 @@ classifiers = [  # Optional
 
 dependencies = [
 "numpy<2.0",
-"scipy<1.14",
+"scipy",
 "numba",
-"pypulseq",
-"pulpy",
 "mri-nufft",
-"mrd-python",
+"torch",
+"sigpy",
+"deepinv",
 "ipywidgets",
 ]
 
@@ -59,18 +59,15 @@ doc = ["sphinx", "pydata-sphinx-theme", "myst-nb", "matplotlib", "mrtwin", "sphi
 # List URLs that are relevant to your project
 # This field corresponds to the "Project-URL" and "Home-Page" metadata fields:
 [project.urls]  # Optional
-"Homepage" = "https://github.com/INFN-MRI/pulserver"
-"Bug Reports" = "https://github.com/INFN-MRI/pulserver/issues"
-"Source" = "https://github.com/INFN-MRI/pulserver"
-
-[project.scripts]  # Optional
-pulserver = "pulserver._cli:cli"
+"Homepage" = "https://github.com/INFN-MRI/pygrog"
+"Bug Reports" = "https://github.com/INFN-MRI/pygrog/issues"
+"Source" = "https://github.com/INFN-MRI/pygrog"
 
 [tool.setuptools.packages.find]
 where=["src"]
 
 [tool.setuptools_scm]
-write_to = "src/pulserver/_version.py"
+write_to = "src/pygrog/_version.py"
 version_scheme = "python-simplified-semver"
 local_scheme="no-local-version"
 fallback_version="v99-dev"
@@ -87,8 +84,7 @@ extend-exclude = [
 "*_version.py", 
 "test_*.py", 
 "tests", 
-"src/pulserver/_server",
-"src/pulserver/pulseq/_spsp",
+"src/pygrog/_server",
 ]
 
 ignore = [
