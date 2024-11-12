@@ -1,10 +1,13 @@
 import torch
 from typing import Tuple, Optional
 
+
 class CalibrationData:
     """Handles calibration data extraction and synthesis for implicit GROG."""
 
-    def __init__(self, kspace_data: torch.Tensor, trajectory: Optional[torch.Tensor] = None):
+    def __init__(
+        self, kspace_data: torch.Tensor, trajectory: Optional[torch.Tensor] = None
+    ):
         """Initializes CalibrationData with k-space data and optional trajectory."""
         self.kspace_data = kspace_data
         self.trajectory = trajectory

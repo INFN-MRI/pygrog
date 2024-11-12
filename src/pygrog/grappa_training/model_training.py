@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from typing import Tuple
 
+
 class GrappaInterpolator(nn.Module):
     """Neural network model for GROG interpolation."""
 
@@ -12,7 +13,12 @@ class GrappaInterpolator(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pass
 
-def train_model(model: nn.Module, calibration_data: torch.Tensor, displacements: torch.Tensor, 
-                num_epochs: int) -> nn.Module:
+
+def train_model(
+    model: nn.Module,
+    calibration_data: torch.Tensor,
+    displacements: torch.Tensor,
+    num_epochs: int,
+) -> nn.Module:
     """Trains the GRAPPA interpolator model."""
     pass
