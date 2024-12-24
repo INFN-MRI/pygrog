@@ -7,9 +7,11 @@ import warnings
 import numpy as np
 from numpy.typing import NDArray
 
-from sigpy import get_device
-from sigpy.config import cupy_enabled
-from sigpy.linop import Linop
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from sigpy import get_device
+    from sigpy.config import cupy_enabled
+    from sigpy.linop import Linop
 
 from mrinufft import get_operator
 from mrinufft._array_compat import with_numpy_cupy
@@ -47,7 +49,7 @@ class SubspaceNUFFT(Linop):
         ndim = coord.shape[-1]
         self.eps = eps
         self.basis = basis
-        self.ncoeffs, self.nstacks = basis.shape 
+        self.ncoeffs, self.nstacks = basis.shape
         self.nbatches = np.prod(ishape[: -ndim - 1])
         self.serial = serial
         oshape = list(ishape[:-ndim]) + list(coord.shape[:-1])
@@ -66,7 +68,7 @@ class SubspaceNUFFT(Linop):
                 )
                 for n in range(self.nstacks)
             ]
-    
+
             if cupy_enabled():
                 self.gpu_nufft = [
                     get_operator("cufinufft")(
@@ -86,7 +88,7 @@ class SubspaceNUFFT(Linop):
                 n_trans=self.nbatches * self.ncoeff,
                 eps=self.eps,
             )
-            
+
             if cupy_enabled():
                 self.gpu_nufft = get_operator("cufinufft")(
                     samples=coord.reshape(-1, ndim),
@@ -95,11 +97,11 @@ class SubspaceNUFFT(Linop):
                     n_trans=self.nbatches * self.ncoeff,
                     eps=self.eps,
                 )
-                
+
     @with_numpy_cupy
     def _apply(self, input):
         device_id = get_device(input).id
-        _input = input.reshape(self.nbatches*self.ncoeff, *input.shape[-self.ndim:])
+        _input = input.reshape(self.nbatches * self.ncoeff, *input.shape[-self.ndim :])
         if self.serial:
             output = []
             with warnings.catch_warnings():
@@ -110,9 +112,11 @@ class SubspaceNUFFT(Linop):
                     else:
                         _output = self.gpu_nufft.op(_input)
                     _output = _output.reshape(self.nbatches, self.ncoeffs, -1)
-                    _output = _output * self.basis[:, n][..., None] # (nbatches, ncoeffs, nintl*npts) * (ncoeffs, 1)
-                    output.append(_output.sum(axis=-2)) # (nbatches, nintl*npts)
-            output = np.stack(output).swapaxes(0, 1) # (nbatches, nstacks, nintl*npts)
+                    _output = (
+                        _output * self.basis[:, n][..., None]
+                    )  # (nbatches, ncoeffs, nintl*npts) * (ncoeffs, 1)
+                    output.append(_output.sum(axis=-2))  # (nbatches, nintl*npts)
+            output = np.stack(output).swapaxes(0, 1)  # (nbatches, nstacks, nintl*npts)
         else:
             with warnings.catch_warnings():
                 if device_id < 0:
@@ -120,12 +124,16 @@ class SubspaceNUFFT(Linop):
                 else:
                     output = self.gpu_nufft.op(_input)
             output = output.reshape(self.nbatches, self.ncoeffs, self.nstacks, -1)
-            output = output * self.basis[..., None] # (nbatches, ncoeffs, nstacks, nintl*npts) * (ncoeffs, nstacks, 1)
-            output = output.sum(axis=-3) # (nbatches, nstacks, nintl*npts)
+            output = (
+                output * self.basis[..., None]
+            )  # (nbatches, ncoeffs, nstacks, nintl*npts) * (ncoeffs, nstacks, 1)
+            output = output.sum(axis=-3)  # (nbatches, nstacks, nintl*npts)
         return output.reshape(self.oshape)
 
     def _adjoint_linop(self):
-        return SubspaceNUFFTAdjoint(self.ishape, self.coord, self.basis.T, self.eps, self.serial)
+        return SubspaceNUFFTAdjoint(
+            self.ishape, self.coord, self.basis.T, self.eps, self.serial
+        )
 
 
 class SubspaceNUFFTAdjoint(Linop):
@@ -177,7 +185,7 @@ class SubspaceNUFFTAdjoint(Linop):
                 )
                 for n in range(self.nstacks)
             ]
-    
+
             if cupy_enabled():
                 self.gpu_nufft = [
                     get_operator("cufinufft")(
@@ -197,7 +205,7 @@ class SubspaceNUFFTAdjoint(Linop):
                 n_trans=self.nbatches * self.ncoeff,
                 eps=self.eps,
             )
-            
+
             if cupy_enabled():
                 self.gpu_nufft = get_operator("cufinufft")(
                     samples=coord.reshape(-1, ndim),
@@ -218,23 +226,41 @@ class SubspaceNUFFTAdjoint(Linop):
                 warnings.simplefilter("ignore")
                 for n in range(self.nstacks):
                     if device_id < 0:
-                        _output = self.cpu_nufft.adj_op(_input[n]) # (nbatches, *self.mtx)
+                        _output = self.cpu_nufft.adj_op(
+                            _input[n]
+                        )  # (nbatches, *self.mtx)
                     else:
-                        _output = self.gpu_nufft.adj_op(_input[n]) # (nbatches, *self.mtx)
-                    output += self.basis[n] * _output[..., None] # (ncoeff,) * (nbatches, *self.mtx, 1)
-                output = output[None, ...].swapaxes(0, -1)[..., 0].swapaxes(0, 1) # (nbatches, ncoeff, *self.mtx)
+                        _output = self.gpu_nufft.adj_op(
+                            _input[n]
+                        )  # (nbatches, *self.mtx)
+                    output += (
+                        self.basis[n] * _output[..., None]
+                    )  # (ncoeff,) * (nbatches, *self.mtx, 1)
+                output = (
+                    output[None, ...].swapaxes(0, -1)[..., 0].swapaxes(0, 1)
+                )  # (nbatches, ncoeff, *self.mtx)
         else:
             _input = input.reshape(self.nbatches, self.nstacks, -1)
-            _input = self.basis[:, None, :] * _input # (ncoeff, nbatches, nstacks, nintl*npts)
+            _input = (
+                self.basis[:, None, :] * _input
+            )  # (ncoeff, nbatches, nstacks, nintl*npts)
             _input = _input.reshape(self.ncoeff * self.nbatches, -1)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 if device_id < 0:
-                    output = self.cpu_nufft.adj_op(_input) # (ncoeff * nbatches, *self.mtx)
+                    output = self.cpu_nufft.adj_op(
+                        _input
+                    )  # (ncoeff * nbatches, *self.mtx)
                 else:
-                    output = self.gpu_nufft.adj_op(_input) # (ncoeff * nbatches, *self.mtx)
-            output = output.reshape(self.ncoeff, self.nbatches, *self.mtx).swapaxes(0, 1)
+                    output = self.gpu_nufft.adj_op(
+                        _input
+                    )  # (ncoeff * nbatches, *self.mtx)
+            output = output.reshape(self.ncoeff, self.nbatches, *self.mtx).swapaxes(
+                0, 1
+            )
         return output.reshape(self.oshape)
 
     def _adjoint_linop(self):
-        return SubspaceNUFFT(self.oshape, self.coord, self.basis.T, self.eps, self.serial)
+        return SubspaceNUFFT(
+            self.oshape, self.coord, self.basis.T, self.eps, self.serial
+        )

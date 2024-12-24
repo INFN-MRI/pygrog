@@ -2,12 +2,16 @@
 
 __all__ = ["NUFFT", "NUFFTAdjoint"]
 
+import warnings
+
 import numpy as np
 from numpy.typing import NDArray
 
-from sigpy import get_device
-from sigpy.config import cupy_enabled
-from sigpy.linop import Linop
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from sigpy import get_device
+    from sigpy.config import cupy_enabled
+    from sigpy.linop import Linop
 
 from mrinufft import get_operator
 from mrinufft._array_compat import with_numpy_cupy
