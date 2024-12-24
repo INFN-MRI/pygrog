@@ -50,7 +50,7 @@ class NUFFT(Linop):
             eps=self.eps,
         )
 
-        if cupy_enabled():
+        if cupy_enabled:
             self.gpu_nufft = get_operator("cufinufft")(
                 samples=coord.reshape(-1, ndim),
                 shape=self.mtx,
@@ -106,7 +106,7 @@ class NUFFTAdjoint(Linop):
             eps=self.eps,
         )
 
-        if cupy_enabled():
+        if cupy_enabled:
             self.gpu_nufft = get_operator("cufinufft")(
                 samples=coord.reshape(-1, ndim),
                 shape=self.mtx,

@@ -4,17 +4,16 @@ __all__ = ["SubspaceNUFFT", "SubspaceNUFFTAdjoint"]
 
 import warnings
 
+warnings.simplefilter("ignore")
+
 import numpy as np
 from numpy.typing import NDArray
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from sigpy import get_device
-    from sigpy.config import cupy_enabled
-    from sigpy.linop import Linop
+from sigpy.config import cupy_enabled
+from sigpy.linop import Linop
 
 from mrinufft import get_operator
-from mrinufft._array_compat import with_numpy_cupy
+from mrinufft._array_compat import with_torch
 
 
 class SubspaceNUFFT(Linop):
@@ -44,7 +43,7 @@ class SubspaceNUFFT(Linop):
         coord: NDArray,
         basis: NDArray,
         eps: float = 1e-6,
-        serial: bool = True,
+        serial: bool = False,
     ):
         ndim = coord.shape[-1]
         self.eps = eps
@@ -52,7 +51,9 @@ class SubspaceNUFFT(Linop):
         self.ncoeffs, self.nstacks = basis.shape
         self.nbatches = np.prod(ishape[: -ndim - 1])
         self.serial = serial
-        oshape = list(ishape[:-ndim]) + list(coord.shape[:-1])
+        self.coord = coord
+        self.ndim = coord.shape[-1]
+        oshape = list(ishape[: -ndim - 1]) + list(coord.shape[:-1])
         super().__init__(oshape, ishape)
 
         # get grid shape
@@ -69,13 +70,13 @@ class SubspaceNUFFT(Linop):
                 for n in range(self.nstacks)
             ]
 
-            if cupy_enabled():
+            if cupy_enabled:
                 self.gpu_nufft = [
                     get_operator("cufinufft")(
                         samples=coord[n].reshape(-1, ndim),
                         shape=self.mtx,
                         n_batchs=self.nbatches,
-                        n_trans=self.nbatches,
+                        # n_trans=self.nbatches,
                         eps=self.eps,
                     )
                     for n in range(self.nstacks)
@@ -84,45 +85,42 @@ class SubspaceNUFFT(Linop):
             self.cpu_nufft = get_operator("finufft")(
                 samples=coord.reshape(-1, ndim),
                 shape=self.mtx,
-                n_batchs=self.nbatches * self.ncoeff,
-                n_trans=self.nbatches * self.ncoeff,
+                n_batchs=self.nbatches * self.ncoeffs,
+                n_trans=self.nbatches * self.ncoeffs,
                 eps=self.eps,
             )
 
-            if cupy_enabled():
+            if cupy_enabled:
                 self.gpu_nufft = get_operator("cufinufft")(
                     samples=coord.reshape(-1, ndim),
                     shape=self.mtx,
-                    n_batchs=self.nbatches * self.ncoeff,
-                    n_trans=self.nbatches * self.ncoeff,
+                    n_batchs=self.nbatches * self.ncoeffs,
+                    # n_trans=self.nbatches * self.ncoeffs,
                     eps=self.eps,
                 )
 
-    @with_numpy_cupy
+    @with_torch
     def _apply(self, input):
-        device_id = get_device(input).id
-        _input = input.reshape(self.nbatches * self.ncoeff, *input.shape[-self.ndim :])
+        device_id = input.device.index
+        _input = input.reshape(self.nbatches * self.ncoeffs, *input.shape[-self.ndim :])
         if self.serial:
             output = []
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                for n in range(self.nstacks):
-                    if device_id < 0:
-                        _output = self.cpu_nufft.op(_input)
-                    else:
-                        _output = self.gpu_nufft.op(_input)
-                    _output = _output.reshape(self.nbatches, self.ncoeffs, -1)
-                    _output = (
-                        _output * self.basis[:, n][..., None]
-                    )  # (nbatches, ncoeffs, nintl*npts) * (ncoeffs, 1)
-                    output.append(_output.sum(axis=-2))  # (nbatches, nintl*npts)
+            for n in range(self.nstacks):
+                if device_id < 0:
+                    _output = self.cpu_nufft[n].op(_input)
+                else:
+                    _output = self.gpu_nufft[n].op(_input)
+                _output = _output.reshape(self.nbatches, self.ncoeffs, -1)
+                _output = (
+                    _output * self.basis[:, n][..., None]
+                )  # (nbatches, ncoeffs, nintl*npts) * (ncoeffs, 1)
+                output.append(_output.sum(axis=-2))  # (nbatches, nintl*npts)
             output = np.stack(output).swapaxes(0, 1)  # (nbatches, nstacks, nintl*npts)
         else:
-            with warnings.catch_warnings():
-                if device_id < 0:
-                    output = self.cpu_nufft.op(_input)
-                else:
-                    output = self.gpu_nufft.op(_input)
+            if device_id < 0:
+                output = self.cpu_nufft.op(_input)
+            else:
+                output = self.gpu_nufft.op(_input)
             output = output.reshape(self.nbatches, self.ncoeffs, self.nstacks, -1)
             output = (
                 output * self.basis[..., None]
@@ -167,9 +165,13 @@ class SubspaceNUFFTAdjoint(Linop):
     ):
         ndim = coord.shape[-1]
         self.eps = eps
-        self.nstacks = oshape[-ndim - 1]
+        self.basis = basis
+        self.nstacks, self.ncoeffs = basis.shape
         self.nbatches = np.prod(oshape[: -ndim - 1])
-        ishape = list(oshape[:-ndim]) + list(coord.shape[:-1])
+        self.serial = serial
+        self.coord = coord
+        self.ndim = coord.shape[-1]
+        ishape = list(oshape[: -ndim - 1]) + list(coord.shape[:-1])
         super().__init__(oshape, ishape)
 
         # get grid shape
@@ -186,13 +188,13 @@ class SubspaceNUFFTAdjoint(Linop):
                 for n in range(self.nstacks)
             ]
 
-            if cupy_enabled():
+            if cupy_enabled:
                 self.gpu_nufft = [
                     get_operator("cufinufft")(
                         samples=coord[n].reshape(-1, ndim),
                         shape=self.mtx,
                         n_batchs=self.nbatches,
-                        n_trans=self.nbatches,
+                        # n_trans=self.nbatches,
                         eps=self.eps,
                     )
                     for n in range(self.nstacks)
@@ -201,61 +203,53 @@ class SubspaceNUFFTAdjoint(Linop):
             self.cpu_nufft = get_operator("finufft")(
                 samples=coord.reshape(-1, ndim),
                 shape=self.mtx,
-                n_batchs=self.nbatches * self.ncoeff,
-                n_trans=self.nbatches * self.ncoeff,
+                n_batchs=self.nbatches * self.ncoeffs,
+                n_trans=self.nbatches * self.ncoeffs,
                 eps=self.eps,
             )
 
-            if cupy_enabled():
+            if cupy_enabled:
                 self.gpu_nufft = get_operator("cufinufft")(
                     samples=coord.reshape(-1, ndim),
                     shape=self.mtx,
-                    n_batchs=self.nbatches * self.ncoeff,
-                    n_trans=self.nbatches * self.ncoeff,
+                    n_batchs=self.nbatches * self.ncoeffs,
+                    # n_trans=self.nbatches * self.ncoeffs,
                     eps=self.eps,
                 )
 
-    @with_numpy_cupy
+    @with_torch
     def _apply(self, input):
-        device_id = get_device(input).id
+        device_id = input.device.index
         if self.serial:
             _input = input.reshape(self.nbatches, self.nstacks, -1)
             _input = input.swapaxes(0, 1)
             output = 0.0
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                for n in range(self.nstacks):
-                    if device_id < 0:
-                        _output = self.cpu_nufft.adj_op(
-                            _input[n]
-                        )  # (nbatches, *self.mtx)
-                    else:
-                        _output = self.gpu_nufft.adj_op(
-                            _input[n]
-                        )  # (nbatches, *self.mtx)
-                    output += (
-                        self.basis[n] * _output[..., None]
-                    )  # (ncoeff,) * (nbatches, *self.mtx, 1)
-                output = (
-                    output[None, ...].swapaxes(0, -1)[..., 0].swapaxes(0, 1)
-                )  # (nbatches, ncoeff, *self.mtx)
+            for n in range(self.nstacks):
+                if device_id < 0:
+                    _output = self.cpu_nufft[n].adj_op(
+                        _input[n]
+                    )  # (nbatches, *self.mtx)
+                else:
+                    _output = self.gpu_nufft[n].adj_op(
+                        _input[n]
+                    )  # (nbatches, *self.mtx)
+                output += (
+                    self.basis[n] * _output[..., None]
+                )  # (ncoeff,) * (nbatches, *self.mtx, 1)
+            output = (
+                output[None, ...].swapaxes(0, -1)[..., 0].swapaxes(0, 1)
+            )  # (nbatches, ncoeff, *self.mtx)
         else:
             _input = input.reshape(self.nbatches, self.nstacks, -1)
             _input = (
-                self.basis[:, None, :] * _input
+                self.basis.T[:, None, :, None] * _input
             )  # (ncoeff, nbatches, nstacks, nintl*npts)
-            _input = _input.reshape(self.ncoeff * self.nbatches, -1)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                if device_id < 0:
-                    output = self.cpu_nufft.adj_op(
-                        _input
-                    )  # (ncoeff * nbatches, *self.mtx)
-                else:
-                    output = self.gpu_nufft.adj_op(
-                        _input
-                    )  # (ncoeff * nbatches, *self.mtx)
-            output = output.reshape(self.ncoeff, self.nbatches, *self.mtx).swapaxes(
+            _input = _input.reshape(self.ncoeffs * self.nbatches, -1)
+            if device_id < 0:
+                output = self.cpu_nufft.adj_op(_input)  # (ncoeff * nbatches, *self.mtx)
+            else:
+                output = self.gpu_nufft.adj_op(_input)  # (ncoeff * nbatches, *self.mtx)
+            output = output.reshape(self.ncoeffs, self.nbatches, *self.mtx).swapaxes(
                 0, 1
             )
         return output.reshape(self.oshape)

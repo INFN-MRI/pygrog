@@ -55,7 +55,7 @@ class StackedNUFFT(Linop):
             for n in range(self.nstacks)
         ]
 
-        if cupy_enabled():
+        if cupy_enabled:
             self.gpu_nufft = [
                 get_operator("cufinufft")(
                     samples=coord[n].reshape(-1, ndim),
@@ -123,7 +123,7 @@ class StackedNUFFTAdjoint(Linop):
             for n in range(self.nstacks)
         ]
 
-        if cupy_enabled():
+        if cupy_enabled:
             self.gpu_nufft = [
                 get_operator("cufinufft")(
                     samples=coord[n].reshape(-1, ndim),

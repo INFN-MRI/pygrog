@@ -206,7 +206,7 @@ class SVDCompression:
                     f"Requested number of coefficients {num_coeff} larger than space {training_data.shape[-1]}"
                 )
 
-        self._basis = Vh.swapaxes(-1, -2).conj()[..., :self._num_coeff]
+        self._basis = Vh.swapaxes(-1, -2).conj()[..., : self._num_coeff]
 
     @with_torch
     def __call__(self, input, axis=-1):  # noqa
