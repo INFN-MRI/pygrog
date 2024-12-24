@@ -75,7 +75,7 @@ def generate_spiral_trajectory(
         # compute dcf
         dcf = voronoi(k[..., :-1]).reshape(*k.shape[:-1]).astype(np.float32)
 
-        return k[..., None, :-1], dcf[:, None, :], t
+        return k[:, None, :, :-1], dcf[:, None, :], t
 
     # compute full spiral
     equispaced_angles = initialize_tilt("uniform", nintl) * np.arange(nintl)

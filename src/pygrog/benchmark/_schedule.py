@@ -1,5 +1,4 @@
-"""
-"""
+"""Parameter schedule generation subroutines."""
 
 import numpy as np
 
