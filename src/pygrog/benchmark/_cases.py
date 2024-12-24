@@ -114,27 +114,27 @@ def generate_mrf_case(
     grog_training = sigpy.fft(grog_training, axes=list(range(-ndim, 0)))
     grog_training = sigpy.resize(grog_training, oshape=[num_coils] + ndim * [24])
 
-    # kspace
-    segmentation = [(obj.segmentation == n + 1) for n in range(signals.shape[0])]
-    segmentation = np.stack(segmentation, axis=0)
-    segmentation = smaps * segmentation[:, None, ...]
-
     # Fourier transform
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         nufft = get_operator("finufft")(
             samples=k.reshape(-1, ndim),
-            n_batchs=signals.shape[0],
             n_coils=smaps.shape[0],
-            n_trans=signals.shape[0] * smaps.shape[0],
+            n_trans=smaps.shape[0],
             shape=[npix] * ndim,
         )
-    data = nufft.op(segmentation)
-    data = data.reshape(signals.shape[0], smaps.shape[0], *k.shape[:-1])
-    data = signals[:, None, :, None, None] * data
-    data = data.sum(axis=0)
 
-    return data, k, dcf, grog_training, obj_coeff, basis
+    # kspace
+    data = 0.0
+    for n in range(signals.shape[0]):
+        segmentation = obj.segmentation == n + 1
+        segmentation = smaps * segmentation
+        _data = nufft.op(segmentation)
+        _data = _data.reshape(smaps.shape[0], *k.shape[:-1])
+        _data = signals[n, None, :, None, None] * _data
+        data += _data
+
+    return data.numpy(), k, dcf, grog_training, obj_coeff, basis.numpy()
 
 
 def generate_spgr_case(
@@ -244,27 +244,27 @@ def generate_spgr_case(
         grog_training, oshape=grog_training.shape[:-2] + [24, 24]
     )
 
-    # kspace
-    segmentation = [(obj.segmentation == n + 1) for n in range(signals.shape[0])]
-    segmentation = np.stack(segmentation, axis=0)
-    if ndim == 3:
-        segmentation = smaps * segmentation[:, :, None, ...]
-    else:
-        segmentation = smaps * segmentation[:, None, ...]
-
     # Fourier transform
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         nufft = get_operator("finufft")(
             samples=k.reshape(-1, ndim),
-            n_batchs=signals.shape[0],
             n_coils=smaps.shape[0],
-            n_trans=signals.shape[0] * smaps.shape[0],
+            n_trans=smaps.shape[0],
             shape=mtx[-2:],
         )
-    data = nufft.op(segmentation)
-    data = data.reshape(signals.shape[0], *smaps.shape[:-2], *k.shape[:-1])
-    data = signals[:, None, None, :, None, None] * data
-    data = data.sum(axis=0)
 
-    return data, k, dcf, grog_training, obj_echoes
+    # kspace
+    data = 0.0
+    for n in range(signals.shape[0]):
+        segmentation = obj.segmentation == n + 1
+        if ndim == 3:
+            segmentation = smaps * segmentation[:, None, ...]
+        else:
+            segmentation = smaps * segmentation
+        _data = nufft.op(segmentation)
+        _data = _data.reshape(smaps.shape[0], *k.shape[:-1])
+        _data = signals[n, None, None, :, None, None] * _data
+        data += _data
+
+    return data.numpy(), k, dcf, grog_training, obj_echoes

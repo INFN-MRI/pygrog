@@ -9,11 +9,12 @@ warnings.simplefilter("ignore")
 import numpy as np
 from numpy.typing import NDArray
 
+from sigpy import get_device
 from sigpy.config import cupy_enabled
 from sigpy.linop import Linop
 
 from mrinufft import get_operator
-from mrinufft._array_compat import with_torch
+from mrinufft._array_compat import with_numpy_cupy
 
 
 class SubspaceNUFFT(Linop):
@@ -99,9 +100,9 @@ class SubspaceNUFFT(Linop):
                     eps=self.eps,
                 )
 
-    @with_torch
+    @with_numpy_cupy
     def _apply(self, input):
-        device_id = input.device.index
+        device_id = get_device(input).id
         _input = input.reshape(self.nbatches * self.ncoeffs, *input.shape[-self.ndim :])
         if self.serial:
             output = []
@@ -217,9 +218,9 @@ class SubspaceNUFFTAdjoint(Linop):
                     eps=self.eps,
                 )
 
-    @with_torch
+    @with_numpy_cupy
     def _apply(self, input):
-        device_id = input.device.index
+        device_id = get_device(input).id
         if self.serial:
             _input = input.reshape(self.nbatches, self.nstacks, -1)
             _input = input.swapaxes(0, 1)
